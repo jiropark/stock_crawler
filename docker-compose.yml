@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  stock-crawler:
+    build: .
+    container_name: stock-crawler
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Seoul
+    ports:
+      - "8088:8080"
+    volumes:
+      - /volume1/docker/stock-crawler/data:/data
+      - /volume1/docker/stock-crawler/logs:/logs

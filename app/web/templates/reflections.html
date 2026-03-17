@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}반성의 시간{% endblock %}
+{% block content %}
+<h2>🔍 반성의 시간</h2>
+
+<div class="section">
+    <h3>현재 동적 파라미터</h3>
+    {% if data.current_params %}
+    <table>
+        <thead>
+            <tr>
+                <th>파라미터</th>
+                <th>현재값</th>
+                <th>범위 (min ~ max)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for name, bounds in data.tunable_params.items() %}
+            <tr>
+                <td><code>{{ name }}</code></td>
+                <td><strong>{{ data.current_params.get(name, '-') }}</strong></td>
+                <td>{{ bounds.min }} ~ {{ bounds.max }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>아직 반성 결과에 의한 파라미터 조정이 없습니다. (기본값 사용 중)</p>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h3>반성 이력</h3>
+    {% if data.reflections %}
+    {% for r in data.reflections %}
+    <div class="card" style="margin-bottom: 16px; padding: 16px; border: 1px solid #ddd; border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>📅 {{ r.date }}</strong>
+            <span>매도 {{ r.total_sells }}건 | 승률 {{ "%.0f"|format(r.win_rate) }}% | PF {{ "%.2f"|format(r.profit_factor) }}</span>
+        </div>
+        <div style="margin-top: 8px;">
+            <span>💰 순손익: {{ "{:+,}".format(r.total_pnl|int) }}원</span>
+            <span style="margin-left: 16px;">📈 총수익률: {{ "%+.2f"|format(r.total_return) }}%</span>
+            <span style="margin-left: 16px;">💵 현금: {{ "%.0f"|format(r.cash_ratio) }}%</span>
+            <span style="margin-left: 16px;">📦 보유: {{ r.current_holdings }}종목</span>
+        </div>
+        {% if r.parameter_changes %}
+        <div style="margin-top: 8px; background: #f0f0f0; padding: 8px; border-radius: 4px;">
+            <strong>⚙️ 파라미터 변경:</strong> {{ r.parameter_changes }}
+        </div>
+        {% endif %}
+        <div style="margin-top: 8px; color: #555;">
+            💭 {{ r.reasoning }}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p>아직 반성 기록이 없습니다.</p>
+    {% endif %}
+</div>
+{% endblock %}

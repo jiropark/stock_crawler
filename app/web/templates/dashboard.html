@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}대시보드{% endblock %}
+
+{% block content %}
+<h1>포트폴리오 현황</h1>
+
+<!-- 요약 카드 -->
+<div class="card-grid">
+    <div class="card">
+        <div class="card-label">총 자산</div>
+        <div class="card-value">{{ "{:,.0f}".format(summary.total_value) }}원</div>
+    </div>
+    <div class="card">
+        <div class="card-label">현금</div>
+        <div class="card-value">{{ "{:,.0f}".format(summary.cash) }}원</div>
+    </div>
+    <div class="card">
+        <div class="card-label">주식 평가액</div>
+        <div class="card-value">{{ "{:,.0f}".format(summary.holdings_value) }}원</div>
+    </div>
+    <div class="card">
+        <div class="card-label">총 수익률</div>
+        <div class="card-value {% if summary.total_return >= 0 %}profit{% else %}loss{% endif %}">
+            {{ "{:+.2f}".format(summary.total_return) }}%
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-label">누적 수수료+세금</div>
+        <div class="card-value loss">-{{ "{:,.0f}".format(summary.total_fees|default(0)) }}원</div>
+    </div>
+</div>
+
+<!-- 투자 규칙 -->
+<div class="section">
+    <h2>투자 규칙</h2>
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-label">초기 자본금</div>
+            <div class="card-value">5,000,000원</div>
+        </div>
+        <div class="card">
+            <div class="card-label">종목당 최대 투자</div>
+            <div class="card-value">1,000,000원</div>
+        </div>
+        <div class="card">
+            <div class="card-label">최대 보유 종목</div>
+            <div class="card-value">5개</div>
+        </div>
+        <div class="card">
+            <div class="card-label">손절 기준</div>
+            <div class="card-value loss">매입가 -5%</div>
+        </div>
+        <div class="card">
+            <div class="card-label">트레일링 스탑</div>
+            <div class="card-value loss">최고가 -3%</div>
+        </div>
+        <div class="card">
+            <div class="card-label">매수 조건</div>
+            <div class="card-value">스코어 0.6+</div>
+        </div>
+        <div class="card">
+            <div class="card-label">리밸런싱</div>
+            <div class="card-value">평일 16:30</div>
+        </div>
+    </div>
+</div>
+
+<!-- 보유 종목 테이블 -->
+<div class="section">
+    <h2>보유 종목 ({{ summary.holdings_count }}/{{ summary.max_holdings }})</h2>
+    {% if summary.holdings %}
+    <div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>종목코드</th>
+                <th>종목명</th>
+                <th>수량</th>
+                <th>매수가</th>
+                <th>현재가</th>
+                <th>평가금액</th>
+                <th>손익</th>
+                <th>수익률</th>
+                <th>매도 기준가</th>
+                <th>매수일</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in summary.holdings %}
+            {% set stop_loss = h.avg_price * 0.95 %}
+            {% set current_p = h.current_price or h.avg_price %}
+            {% set highest_p = h.highest_price if h.highest_price is defined and h.highest_price else current_p %}
+            {% set trailing_stop = highest_p * 0.97 %}
+            {% set sell_trigger = [stop_loss, trailing_stop] | max %}
+            <tr>
+                <td>{{ h.stock_code }}</td>
+                <td>{{ h.stock_name }}</td>
+                <td>{{ h.quantity }}주</td>
+                <td>{{ "{:,.0f}".format(h.avg_price) }}</td>
+                <td>{{ "{:,.0f}".format(current_p) }}</td>
+                <td>{{ "{:,.0f}".format(h.value) }}</td>
+                <td class="{% if h.pnl >= 0 %}profit{% else %}loss{% endif %}">
+                    {{ "{:+,.0f}".format(h.pnl) }}
+                </td>
+                <td class="{% if h.pnl_pct >= 0 %}profit{% else %}loss{% endif %}">
+                    {{ "{:+.2f}".format(h.pnl_pct) }}%
+                </td>
+                <td>
+                    <span style="font-size: 0.85em; color: #aaa;">
+                        손절: {{ "{:,.0f}".format(stop_loss) }}<br>
+                        T/S: {{ "{:,.0f}".format(trailing_stop) }}
+                    </span><br>
+                    <strong class="loss">{{ "{:,.0f}".format(sell_trigger) }}</strong>
+                </td>
+                <td>{{ h.bought_at[:10] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty-msg">보유 종목이 없습니다.</p>
+    {% endif %}
+</div>
+
+<!-- 보유 종목 주가 차트 -->
+{% if summary.holdings %}
+<div class="section">
+    <h2>보유 종목 주가 (30일)</h2>
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+        {% for h in summary.holdings %}
+        <div class="card" style="padding: 16px;">
+            <div class="card-label">{{ h.stock_name }} ({{ h.stock_code }})</div>
+            <div class="chart-container" style="height: 200px; margin-top: 8px;">
+                <canvas id="stockChart_{{ h.stock_code }}"></canvas>
+            </div>
+            <p id="stockChartMsg_{{ h.stock_code }}" style="color: #888; font-size: 0.85em; text-align: center;">로딩 중...</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 자산 배분 도넛 차트 -->
+<div class="section">
+    <h2>자산 배분</h2>
+    <div class="chart-container" style="max-width: 400px; margin: 0 auto;">
+        <canvas id="allocationChart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── 보유 종목 주가 차트 ──
+    const stockCodes = {{ summary.holdings | map(attribute='stock_code') | list | tojson }};
+    const chartPalette = ['#4dabf7', '#51cf66', '#fcc419', '#ff6b6b', '#cc5de8'];
+
+    stockCodes.forEach((code, idx) => {
+        fetch('/api/stock_chart/' + code)
+            .then(r => r.json())
+            .then(data => {
+                const msgEl = document.getElementById('stockChartMsg_' + code);
+                if (data.error) {
+                    msgEl.textContent = data.error;
+                    return;
+                }
+                msgEl.style.display = 'none';
+                const canvas = document.getElementById('stockChart_' + code);
+                const datasets = [{
+                    label: '종가',
+                    data: data.closes,
+                    borderColor: chartPalette[idx % chartPalette.length],
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    pointRadius: 1,
+                    borderWidth: 2,
+                }];
+                if (data.avg_price) {
+                    datasets.push({
+                        label: '매수가 (' + data.avg_price.toLocaleString() + ')',
+                        data: Array(data.dates.length).fill(data.avg_price),
+                        borderColor: '#ff6b6b',
+                        borderDash: [6, 3],
+                        backgroundColor: 'transparent',
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                    });
+                }
+                new Chart(canvas, {
+                    type: 'line',
+                    data: { labels: data.dates, datasets: datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#aaa', maxTicksLimit: 8 }, grid: { color: '#333' } },
+                            y: { ticks: { color: '#aaa', callback: v => v.toLocaleString() }, grid: { color: '#333' } },
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0', boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: c => c.dataset.label + ': ' + c.parsed.y.toLocaleString() + '원'
+                                }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(() => {
+                document.getElementById('stockChartMsg_' + code).textContent = '차트 로딩 실패';
+            });
+    });
+
+    // ── 자산 배분 도넛 차트 ──
+    const ctx = document.getElementById('allocationChart').getContext('2d');
+    const holdings = {{ summary.holdings | tojson }};
+    const cash = {{ summary.cash }};
+
+    const labels = ['현금'];
+    const data = [cash];
+    const colors = ['#6c757d'];
+    const palette = ['#4dabf7', '#51cf66', '#fcc419', '#ff6b6b', '#cc5de8'];
+
+    holdings.forEach((h, i) => {
+        labels.push(h.stock_name);
+        data.push(h.value);
+        colors.push(palette[i % palette.length]);
+    });
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: '#1a1a2e',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#e0e0e0', padding: 12 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.label + ': ' + ctx.parsed.toLocaleString() + '원';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

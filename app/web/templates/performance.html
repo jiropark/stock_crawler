@@ -1,0 +1,863 @@
+{% extends "base.html" %}
+{% block title %}성과 분석{% endblock %}
+
+{% block content %}
+<h1>AI 투자 성과</h1>
+
+<!-- 요약 카드 -->
+<div class="card-grid">
+    <div class="card">
+        <div class="card-label">총 매매 횟수</div>
+        <div class="card-value">{{ stats.total }}회</div>
+    </div>
+    <div class="card">
+        <div class="card-label">승률</div>
+        <div class="card-value {% if stats.win_rate >= 50 %}profit{% else %}loss{% endif %}">
+            {{ "%.1f"|format(stats.win_rate) }}%
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-label">누적 손익</div>
+        <div class="card-value {% if stats.total_pnl >= 0 %}profit{% else %}loss{% endif %}">
+            {{ "{:+,.0f}".format(stats.total_pnl) }}원
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-label">평균 손익</div>
+        <div class="card-value {% if stats.avg_pnl >= 0 %}profit{% else %}loss{% endif %}">
+            {{ "{:+,.0f}".format(stats.avg_pnl) }}원
+        </div>
+    </div>
+</div>
+
+<!-- 총 자산 추이 라인 차트 -->
+<div class="section">
+    <h2>총 자산 추이</h2>
+    {% if performances %}
+    <div class="chart-container">
+        <canvas id="valueChart"></canvas>
+    </div>
+    {% else %}
+    <p class="empty-msg">성과 데이터가 없습니다.</p>
+    {% endif %}
+</div>
+
+<!-- 일별 수익률 바 차트 -->
+{% if performances %}
+<div class="section">
+    <h2>일별 수익률</h2>
+    <div class="chart-container">
+        <canvas id="returnChart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<!-- 승/패 도넛 차트 -->
+{% if stats.total > 0 %}
+<div class="section">
+    <h2>승률 분포</h2>
+    <div class="chart-container" style="max-width: 300px; margin: 0 auto;">
+        <canvas id="winLossChart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<!-- 주간 AI 성적표 -->
+<div class="section">
+    <h2>주간 AI 성적표</h2>
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-label">이번 주 승률</div>
+            <div class="card-value {% if weekly_stats is defined and weekly_stats.current_win_rate is not none %}{% if weekly_stats.current_win_rate >= 50 %}profit{% else %}loss{% endif %}{% endif %}">
+                {% if weekly_stats is defined and weekly_stats.current_win_rate is not none %}
+                    {{ "%.1f"|format(weekly_stats.current_win_rate) }}%
+                {% else %}
+                    데이터 수집 중
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">지난 주 승률</div>
+            <div class="card-value">
+                {% if weekly_stats is defined and weekly_stats.prev_win_rate is not none %}
+                    {{ "%.1f"|format(weekly_stats.prev_win_rate) }}%
+                {% else %}
+                    데이터 수집 중
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">이번 주 평균 수익률</div>
+            <div class="card-value {% if weekly_stats is defined and weekly_stats.current_avg_return is not none %}{% if weekly_stats.current_avg_return >= 0 %}profit{% else %}loss{% endif %}{% endif %}">
+                {% if weekly_stats is defined and weekly_stats.current_avg_return is not none %}
+                    {{ "{:+.2f}".format(weekly_stats.current_avg_return) }}%
+                {% else %}
+                    데이터 수집 중
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">지난 주 평균 수익률</div>
+            <div class="card-value">
+                {% if weekly_stats is defined and weekly_stats.prev_avg_return is not none %}
+                    {{ "{:+.2f}".format(weekly_stats.prev_avg_return) }}%
+                {% else %}
+                    데이터 수집 중
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">감성분석 정확도</div>
+            <div class="card-value">
+                {% if weekly_stats is defined and weekly_stats.sentiment_accuracy is not none %}
+                    {{ "%.1f"|format(weekly_stats.sentiment_accuracy) }}%
+                {% else %}
+                    데이터 수집 중
+                {% endif %}
+            </div>
+            <div style="font-size: 0.75em; color: #888; margin-top: 4px;">긍정 판정 후 실제 상승 비율</div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- AI 학습 현황 (AI Learning Status)                              -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #4dabf7;">&#9881;</span> AI 학습 현황
+    </h2>
+
+    {% if learning is defined and learning.current_weights is defined %}
+    {% set w_mention = learning.current_weights.w_mention_freq | default(0.3) %}
+    {% set w_positive = learning.current_weights.w_positive_ratio | default(0.5) %}
+    {% set w_confidence = learning.current_weights.w_confidence | default(0.2) %}
+
+    <!-- 현재 가중치 -->
+    <div style="margin-bottom: 24px;">
+        <h3 style="color: #e0e0e0; font-size: 1em; margin-bottom: 12px;">현재 스코어링 가중치</h3>
+        <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+            <div class="card" style="border-top: 3px solid #4dabf7;">
+                <div class="card-label" style="color: #4dabf7;">언급빈도 (mention_freq)</div>
+                <div class="card-value" style="color: #4dabf7;">{{ "%.0f"|format(w_mention * 100) }}%</div>
+                <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                    <div style="background: #4dabf7; height: 100%; width: {{ (w_mention * 100)|int }}%; border-radius: 6px;"></div>
+                </div>
+            </div>
+            <div class="card" style="border-top: 3px solid #51cf66;">
+                <div class="card-label" style="color: #51cf66;">긍정비율 (positive_ratio)</div>
+                <div class="card-value" style="color: #51cf66;">{{ "%.0f"|format(w_positive * 100) }}%</div>
+                <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                    <div style="background: #51cf66; height: 100%; width: {{ (w_positive * 100)|int }}%; border-radius: 6px;"></div>
+                </div>
+            </div>
+            <div class="card" style="border-top: 3px solid #fcc419;">
+                <div class="card-label" style="color: #fcc419;">신뢰도 (confidence)</div>
+                <div class="card-value" style="color: #fcc419;">{{ "%.0f"|format(w_confidence * 100) }}%</div>
+                <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                    <div style="background: #fcc419; height: 100%; width: {{ (w_confidence * 100)|int }}%; border-radius: 6px;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- 가중치 비율 통합 바 -->
+        <div style="display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 8px;">
+            <div style="background: #4dabf7; width: {{ (w_mention * 100)|int }}%; transition: width 0.5s;" title="언급빈도 {{ "%.0f"|format(w_mention * 100) }}%"></div>
+            <div style="background: #51cf66; width: {{ (w_positive * 100)|int }}%; transition: width 0.5s;" title="긍정비율 {{ "%.0f"|format(w_positive * 100) }}%"></div>
+            <div style="background: #fcc419; width: {{ (w_confidence * 100)|int }}%; transition: width 0.5s;" title="신뢰도 {{ "%.0f"|format(w_confidence * 100) }}%"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888; margin-top: 4px;">
+            <span style="color: #4dabf7;">언급빈도</span>
+            <span style="color: #51cf66;">긍정비율</span>
+            <span style="color: #fcc419;">신뢰도</span>
+        </div>
+    </div>
+
+    <!-- 감성분석 정확도 + 예측 적중률 -->
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="card">
+            <div class="card-label">감성분석 정확도 (30일)</div>
+            <div class="card-value {% if learning.accuracy_30d is defined and learning.accuracy_30d.accuracy is defined and learning.accuracy_30d.accuracy >= 60 %}profit{% else %}loss{% endif %}">
+                {% if learning.accuracy_30d is defined and learning.accuracy_30d.accuracy is defined %}
+                    {{ "%.1f"|format(learning.accuracy_30d.accuracy) }}%
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+            <div style="font-size: 0.75em; color: #888; margin-top: 4px;">
+                긍정 정밀도:
+                {% if learning.accuracy_30d is defined and learning.accuracy_30d.positive_precision is defined %}
+                    {{ "%.1f"|format(learning.accuracy_30d.positive_precision) }}%
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">감성분석 정확도 (7일)</div>
+            <div class="card-value {% if learning.accuracy_7d is defined and learning.accuracy_7d.accuracy is defined and learning.accuracy_7d.accuracy >= 60 %}profit{% else %}loss{% endif %}">
+                {% if learning.accuracy_7d is defined and learning.accuracy_7d.accuracy is defined %}
+                    {{ "%.1f"|format(learning.accuracy_7d.accuracy) }}%
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label">예측 적중률</div>
+            {% set pred_total = learning.predictions_evaluated | default(0) %}
+            {% set pred_correct = learning.predictions_correct | default(0) %}
+            {% set pred_rate = (pred_correct / pred_total * 100) if pred_total > 0 else 0 %}
+            <div class="card-value {% if pred_rate >= 50 %}profit{% else %}loss{% endif %}">
+                {{ "%.1f"|format(pred_rate) }}%
+            </div>
+            <div style="font-size: 0.75em; color: #888; margin-top: 4px;">
+                {{ pred_correct }} / {{ pred_total }} 건 적중
+                (총 {{ learning.predictions_total | default(0) }}건 예측)
+            </div>
+            <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                <div style="background: {% if pred_rate >= 60 %}#51cf66{% elif pred_rate >= 45 %}#fcc419{% else %}#ff6b6b{% endif %}; height: 100%; width: {{ pred_rate|int }}%; min-width: 2%; border-radius: 6px; transition: width 0.5s;"></div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <p class="empty-msg">학습 데이터를 불러오는 중입니다...</p>
+    {% endif %}
+</div>
+
+<!-- ============================================================ -->
+<!-- 자체 학습 진행도                                                -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #cc5de8;">&#9883;</span> 자체 학습 진행도
+    </h2>
+
+    {% set data_days = 0 %}
+    {% if learning is defined and learning.data_days is defined %}
+        {% set data_days = learning.data_days %}
+    {% elif ai_progress is defined and ai_progress.data_days is defined %}
+        {% set data_days = ai_progress.data_days %}
+    {% endif %}
+
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+        <!-- 로컬 분류 규칙 -->
+        <div class="card" style="border-left: 4px solid #cc5de8;">
+            <div class="card-label" style="color: #cc5de8;">로컬 분류 규칙</div>
+            {% set rules_active = learning.local_rules_active | default(0) if learning is defined else 0 %}
+            {% set rules_total = learning.local_rules_total | default(0) if learning is defined else 0 %}
+            <div class="card-value" style="color: #cc5de8;">
+                {{ rules_active }} <span style="font-size: 0.6em; color: #888;">활성</span>
+                / {{ rules_total }} <span style="font-size: 0.6em; color: #888;">전체</span>
+            </div>
+            <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                {% set rules_pct = (rules_active / rules_total * 100) if rules_total > 0 else 0 %}
+                <div style="background: #cc5de8; height: 100%; width: {{ rules_pct|int }}%; min-width: {% if rules_total > 0 %}2{% else %}0{% endif %}%; border-radius: 6px;"></div>
+            </div>
+            <div style="font-size: 0.75em; color: #888; margin-top: 4px;">데이터 축적 시 자동 생성</div>
+        </div>
+
+        <!-- Gemini 의존도 -->
+        <div class="card" style="border-left: 4px solid #fcc419;">
+            <div class="card-label" style="color: #fcc419;">Gemini 의존도</div>
+            {% set gemini_dep = 100 - (rules_active * 2) if rules_active > 0 else 100 %}
+            {% if gemini_dep < 0 %}{% set gemini_dep = 0 %}{% endif %}
+            <div class="card-value" style="color: {% if gemini_dep > 80 %}#ff6b6b{% elif gemini_dep > 50 %}#fcc419{% else %}#51cf66{% endif %};">
+                {{ gemini_dep }}%
+            </div>
+            <div style="background: #333; border-radius: 6px; overflow: hidden; height: 8px; margin-top: 8px;">
+                <div style="background: {% if gemini_dep > 80 %}#ff6b6b{% elif gemini_dep > 50 %}#fcc419{% else %}#51cf66{% endif %}; height: 100%; width: {{ gemini_dep }}%; border-radius: 6px; transition: width 0.5s;"></div>
+            </div>
+            <div style="font-size: 0.75em; color: #888; margin-top: 4px;">목표: 로컬 규칙 증가 시 점진적 감소</div>
+        </div>
+    </div>
+
+    <!-- 데이터 수집 일수 -->
+    <div style="margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; color: #e0e0e0; margin-bottom: 6px;">
+            <span>데이터 수집 일수</span>
+            <span>{{ data_days }}일</span>
+        </div>
+        <div style="background: #333; border-radius: 8px; overflow: hidden; height: 24px; position: relative;">
+            <!-- Phase markers -->
+            <div style="position: absolute; left: {{ (30/180*100)|int }}%; top: 0; height: 100%; width: 1px; background: rgba(255,255,255,0.3); z-index: 2;" title="30일: Phase 2"></div>
+            <div style="position: absolute; left: {{ (60/180*100)|int }}%; top: 0; height: 100%; width: 1px; background: rgba(255,255,255,0.3); z-index: 2;" title="60일: Phase 3"></div>
+            <div style="position: absolute; left: {{ (90/180*100)|int }}%; top: 0; height: 100%; width: 1px; background: rgba(255,255,255,0.3); z-index: 2;" title="90일: Phase 4"></div>
+            {% set days_pct = (data_days / 180 * 100) if data_days < 180 else 100 %}
+            <div style="background: linear-gradient(90deg, #4dabf7, #51cf66, #fcc419); height: 100%; width: {{ days_pct|int }}%; min-width: 2%; border-radius: 8px; transition: width 0.5s;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.7em; color: #666; margin-top: 4px;">
+            <span>0일</span>
+            <span style="color: {% if data_days >= 30 %}#51cf66{% else %}#666{% endif %};">30일</span>
+            <span style="color: {% if data_days >= 60 %}#51cf66{% else %}#666{% endif %};">60일</span>
+            <span style="color: {% if data_days >= 90 %}#51cf66{% else %}#666{% endif %};">90일</span>
+            <span style="color: {% if data_days >= 180 %}#51cf66{% else %}#666{% endif %};">180일</span>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 가중치 변경 이력                                                -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #fcc419;">&#9881;</span> 가중치 변경 이력
+    </h2>
+
+    {% if learning is defined and learning.weight_history is defined and learning.weight_history | length > 0 %}
+    <div class="table-wrap" style="margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+            <thead>
+                <tr style="border-bottom: 2px solid #444;">
+                    <th style="padding: 10px 8px; text-align: left; color: #aaa;">날짜</th>
+                    <th style="padding: 10px 8px; text-align: center; color: #4dabf7;">언급빈도</th>
+                    <th style="padding: 10px 8px; text-align: center; color: #51cf66;">긍정비율</th>
+                    <th style="padding: 10px 8px; text-align: center; color: #fcc419;">신뢰도</th>
+                    <th style="padding: 10px 8px; text-align: center; color: #aaa;">정확도</th>
+                    <th style="padding: 10px 8px; text-align: center; color: #aaa;">승률</th>
+                    <th style="padding: 10px 8px; text-align: left; color: #aaa;">변경 사유</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in learning.weight_history %}
+                <tr style="border-bottom: 1px solid #333; {% if loop.first %}background: rgba(77,171,247,0.05);{% endif %}">
+                    <td style="padding: 8px; color: #e0e0e0;">{{ h.date }}</td>
+                    <td style="padding: 8px; text-align: center; color: #4dabf7;">{{ "%.0f"|format(h.w_mention_freq * 100) }}%</td>
+                    <td style="padding: 8px; text-align: center; color: #51cf66;">{{ "%.0f"|format(h.w_positive_ratio * 100) }}%</td>
+                    <td style="padding: 8px; text-align: center; color: #fcc419;">{{ "%.0f"|format(h.w_confidence * 100) }}%</td>
+                    <td style="padding: 8px; text-align: center; color: #e0e0e0;">
+                        {% if h.accuracy is defined %}{{ "%.1f"|format(h.accuracy) }}%{% else %}--{% endif %}
+                    </td>
+                    <td style="padding: 8px; text-align: center; color: {% if h.win_rate is defined and h.win_rate >= 50 %}#51cf66{% elif h.win_rate is defined %}#ff6b6b{% else %}#888{% endif %};">
+                        {% if h.win_rate is defined %}{{ "%.1f"|format(h.win_rate) }}%{% else %}--{% endif %}
+                    </td>
+                    <td style="padding: 8px; color: #888; font-size: 0.85em;">{{ h.adjustment_reason | default('--') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 가중치 변화 차트 -->
+    <div class="chart-container">
+        <canvas id="weightEvolutionChart"></canvas>
+    </div>
+    {% else %}
+    <p class="empty-msg">가중치 변경 이력이 없습니다. 첫 자동 조정까지 데이터를 수집 중입니다.</p>
+    {% endif %}
+</div>
+
+<!-- ============================================================ -->
+<!-- AI 개선 전략 로드맵                                             -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #51cf66;">&#9776;</span> AI 개선 전략 로드맵
+    </h2>
+
+    {% set data_days_road = 0 %}
+    {% if learning is defined and learning.data_days is defined %}
+        {% set data_days_road = learning.data_days %}
+    {% elif ai_progress is defined and ai_progress.data_days is defined %}
+        {% set data_days_road = ai_progress.data_days %}
+    {% endif %}
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Phase 1 -->
+        <div class="card" style="border-left: 4px solid #51cf66; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-label" style="color: #51cf66;">
+                    {% if data_days_road >= 0 %}&#10003;{% endif %} Phase 1 (현재)
+                </div>
+                <span style="font-size: 0.75em; padding: 2px 8px; border-radius: 4px; background: #51cf66; color: #1a1a2e; font-weight: bold;">진행 중</span>
+            </div>
+            <div style="color: #e0e0e0; margin-top: 4px; font-weight: 500;">뉴스 감성분석 기반 스코어링 + 자동 매매</div>
+            <div style="font-size: 0.85em; color: #aaa; margin-top: 6px;">
+                Gemini API로 뉴스 감성 판단 &rarr; 종목 스코어 산출 &rarr; 자동 매수/매도<br>
+                데이터 수집 및 예측 정확도 검증 단계
+            </div>
+        </div>
+
+        <!-- Phase 2 -->
+        <div class="card" style="border-left: 4px solid {% if data_days_road >= 30 %}#4dabf7{% else %}#444{% endif %}; {% if data_days_road < 30 %}opacity: 0.7;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-label" style="color: {% if data_days_road >= 30 %}#4dabf7{% else %}#666{% endif %};">
+                    {% if data_days_road >= 30 %}&#10003;{% else %}&#9679;{% endif %} Phase 2 (데이터 30일+)
+                </div>
+                {% if data_days_road >= 30 %}
+                <span style="font-size: 0.75em; padding: 2px 8px; border-radius: 4px; background: #4dabf7; color: #1a1a2e; font-weight: bold;">활성화</span>
+                {% else %}
+                <span style="font-size: 0.75em; color: #666;">{{ 30 - data_days_road }}일 남음</span>
+                {% endif %}
+            </div>
+            <div style="color: #e0e0e0; margin-top: 4px; font-weight: 500;">매매 결과 피드백 &rarr; 가중치 자동 조정</div>
+            <div style="font-size: 0.85em; color: #aaa; margin-top: 6px;">
+                수익 종목 vs 손실 종목의 감성 스코어 패턴 비교<br>
+                언급빈도/긍정비율/신뢰도 가중치 자동 미세 조정<br>
+                주 1회 자동 리밸런싱
+            </div>
+        </div>
+
+        <!-- Phase 3 -->
+        <div class="card" style="border-left: 4px solid {% if data_days_road >= 60 %}#fcc419{% else %}#444{% endif %}; {% if data_days_road < 60 %}opacity: 0.7;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-label" style="color: {% if data_days_road >= 60 %}#fcc419{% else %}#666{% endif %};">
+                    {% if data_days_road >= 60 %}&#10003;{% else %}&#9679;{% endif %} Phase 3 (데이터 60일+)
+                </div>
+                {% if data_days_road >= 60 %}
+                <span style="font-size: 0.75em; padding: 2px 8px; border-radius: 4px; background: #fcc419; color: #1a1a2e; font-weight: bold;">활성화</span>
+                {% else %}
+                <span style="font-size: 0.75em; color: #666;">{{ [60 - data_days_road, 0] | max }}일 남음</span>
+                {% endif %}
+            </div>
+            <div style="color: #e0e0e0; margin-top: 4px; font-weight: 500;">로컬 감성 규칙 학습 &rarr; Gemini 호출 절감</div>
+            <div style="font-size: 0.85em; color: #aaa; margin-top: 6px;">
+                빈출 키워드-감성 매핑 테이블 자동 구축<br>
+                확신도 높은 뉴스는 로컬 규칙으로 판단 (API 비용 절감)<br>
+                Gemini는 애매한 케이스에만 호출
+            </div>
+        </div>
+
+        <!-- Phase 4 -->
+        <div class="card" style="border-left: 4px solid {% if data_days_road >= 90 %}#cc5de8{% else %}#444{% endif %}; {% if data_days_road < 90 %}opacity: 0.7;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-label" style="color: {% if data_days_road >= 90 %}#cc5de8{% else %}#666{% endif %};">
+                    {% if data_days_road >= 90 %}&#10003;{% else %}&#9679;{% endif %} Phase 4 (데이터 90일+)
+                </div>
+                {% if data_days_road >= 90 %}
+                <span style="font-size: 0.75em; padding: 2px 8px; border-radius: 4px; background: #cc5de8; color: #1a1a2e; font-weight: bold;">활성화</span>
+                {% else %}
+                <span style="font-size: 0.75em; color: #666;">{{ [90 - data_days_road, 0] | max }}일 남음</span>
+                {% endif %}
+            </div>
+            <div style="color: #e0e0e0; margin-top: 4px; font-weight: 500;">패턴 학습 &rarr; 프롬프트 진화 &rarr; 섹터별 전략</div>
+            <div style="font-size: 0.85em; color: #aaa; margin-top: 6px;">
+                오답 패턴 수집 &rarr; 프롬프트 자동 개선<br>
+                섹터(IT/바이오/금융 등)별 가중치 분리 운영<br>
+                시간대/요일별 매매 패턴 최적화
+            </div>
+        </div>
+
+        <!-- Phase 5 -->
+        <div class="card" style="border-left: 4px solid {% if data_days_road >= 180 %}#ff6b6b{% else %}#444{% endif %}; {% if data_days_road < 180 %}opacity: 0.7;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-label" style="color: {% if data_days_road >= 180 %}#ff6b6b{% else %}#666{% endif %};">
+                    {% if data_days_road >= 180 %}&#10003;{% else %}&#9679;{% endif %} Phase 5 (6개월+)
+                </div>
+                {% if data_days_road >= 180 %}
+                <span style="font-size: 0.75em; padding: 2px 8px; border-radius: 4px; background: #ff6b6b; color: #1a1a2e; font-weight: bold;">활성화</span>
+                {% else %}
+                <span style="font-size: 0.75em; color: #666;">{{ [180 - data_days_road, 0] | max }}일 남음</span>
+                {% endif %}
+            </div>
+            <div style="color: #e0e0e0; margin-top: 4px; font-weight: 500;">텔레그램 + 공시 통합, 완전 자율 판단</div>
+            <div style="font-size: 0.85em; color: #aaa; margin-top: 6px;">
+                텔레그램 채널/커뮤니티 실시간 분석 통합<br>
+                DART 공시 자동 파싱 + 이벤트 드리븐 매매<br>
+                완전 자율 판단 시스템 (사람 개입 최소화)
+            </div>
+        </div>
+    </div>
+
+    <!-- ML 도입 판단 알림 -->
+    {% set trades_count = learning.total_trades | default(0) if learning is defined else 0 %}
+    {% set win_rate = learning.trade_win_rate | default(0) if learning is defined else 0 %}
+    {% set ml_ready = trades_count >= 300 %}
+    {% set ml_collecting = trades_count >= 50 and trades_count < 300 %}
+
+    <div class="card" style="margin-top: 16px; border: 2px solid {% if ml_ready %}#51cf66{% elif ml_collecting %}#fcc419{% else %}#444{% endif %}; background: {% if ml_ready %}rgba(81,207,102,0.08){% elif ml_collecting %}rgba(252,196,25,0.05){% else %}rgba(255,255,255,0.02){% endif %};">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.4em;">{% if ml_ready %}&#9889;{% elif ml_collecting %}&#9203;{% else %}&#128274;{% endif %}</span>
+                <div>
+                    <div style="color: {% if ml_ready %}#51cf66{% elif ml_collecting %}#fcc419{% else %}#888{% endif %}; font-weight: bold; font-size: 1.05em;">
+                        ML 파이프라인 (XGBoost + 기술지표)
+                    </div>
+                    <div style="color: #aaa; font-size: 0.85em; margin-top: 2px;">
+                        {% if ml_ready %}
+                            도입 준비 완료! 매매 데이터 {{ trades_count }}건 축적됨.
+                        {% elif ml_collecting %}
+                            피처 수집 권장 단계. 매매 {{ trades_count }}건 / 300건 ({{ (trades_count / 300 * 100)|int }}%)
+                        {% else %}
+                            매매 데이터 축적 중. {{ trades_count }}건 / 300건 필요
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% if ml_ready %}
+            <span style="padding: 4px 12px; border-radius: 6px; background: #51cf66; color: #1a1a2e; font-weight: bold; font-size: 0.85em; animation: pulse 2s infinite;">
+                도입 권장
+            </span>
+            {% elif ml_collecting %}
+            <span style="padding: 4px 12px; border-radius: 6px; background: #fcc419; color: #1a1a2e; font-weight: bold; font-size: 0.85em;">
+                피처 수집 시작 가능
+            </span>
+            {% else %}
+            <span style="padding: 4px 12px; border-radius: 6px; background: #444; color: #888; font-size: 0.85em;">
+                대기 중
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- 진행률 바 -->
+        <div style="margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #888; margin-bottom: 4px;">
+                <span>매매 데이터</span>
+                <span>{{ trades_count }} / 300건</span>
+            </div>
+            <div style="background: #333; border-radius: 6px; overflow: hidden; height: 10px; position: relative;">
+                <div style="position: absolute; left: {{ (50/300*100)|int }}%; top: 0; height: 100%; width: 1px; background: rgba(252,196,25,0.5); z-index: 2;" title="50건: 피처 수집 시작"></div>
+                {% set trade_pct = (trades_count / 300 * 100) if trades_count < 300 else 100 %}
+                <div style="background: {% if ml_ready %}#51cf66{% elif ml_collecting %}linear-gradient(90deg, #fcc419, #51cf66){% else %}#4dabf7{% endif %}; height: 100%; width: {{ trade_pct|int }}%; min-width: {% if trades_count > 0 %}2{% else %}0{% endif %}%; border-radius: 6px; transition: width 0.5s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.7em; color: #666; margin-top: 4px;">
+                <span>0건</span>
+                <span style="color: {% if trades_count >= 50 %}#fcc419{% else %}#666{% endif %};">50건 (피처 수집)</span>
+                <span style="color: {% if trades_count >= 300 %}#51cf66{% else %}#666{% endif %};">300건 (ML 학습)</span>
+            </div>
+        </div>
+
+        <!-- ML 도입 시 변경 사항 -->
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333; font-size: 0.85em; color: #aaa;">
+            <div style="margin-bottom: 4px; color: #e0e0e0; font-weight: 500;">ML 도입 시 구조:</div>
+            <span style="color: #4dabf7;">기존 감성분석 스코어(40%)</span> +
+            <span style="color: #cc5de8;">XGBoost 기술지표 예측(60%)</span> = 최종 스코어<br>
+            <span style="font-size: 0.85em; color: #666;">피처: RSI, MACD, 볼린저밴드, 거래량비율, KOSPI 변동 등 15개 지표</span>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+</style>
+
+<!-- ============================================================ -->
+<!-- 학습 지표 추이                                                  -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #4dabf7;">&#9733;</span> 학습 지표 추이
+    </h2>
+
+    {% if learning is defined and learning.metrics_history is defined and learning.metrics_history | length > 0 %}
+    <div class="chart-container">
+        <canvas id="metricsChart"></canvas>
+    </div>
+    {% else %}
+    <p class="empty-msg">학습 지표 데이터가 아직 충분하지 않습니다. 데이터가 쌓이면 여기에 정확도/정밀도 추이 그래프가 표시됩니다.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% if performances %}
+<script>
+    // 성과 데이터 (시간순)
+    const perfs = {{ performances | tojson }};
+    perfs.reverse();
+
+    const dates = perfs.map(p => p.date);
+    const totalValues = perfs.map(p => p.total_value);
+    const dailyReturns = perfs.map(p => p.daily_return);
+
+    // 총 자산 추이
+    new Chart(document.getElementById('valueChart'), {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: '총 자산',
+                data: totalValues,
+                borderColor: '#4dabf7',
+                backgroundColor: 'rgba(77, 171, 247, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+                y: {
+                    ticks: {
+                        color: '#aaa',
+                        callback: v => (v / 10000).toFixed(0) + '만'
+                    },
+                    grid: { color: '#333' }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#e0e0e0' } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.parsed.y.toLocaleString() + '원'
+                    }
+                }
+            }
+        }
+    });
+
+    // 일별 수익률
+    new Chart(document.getElementById('returnChart'), {
+        type: 'bar',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: '일별 수익률 (%)',
+                data: dailyReturns,
+                backgroundColor: dailyReturns.map(r =>
+                    r >= 0 ? 'rgba(81, 207, 102, 0.7)' : 'rgba(255, 107, 107, 0.7)'
+                ),
+                borderRadius: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+                y: { ticks: { color: '#aaa' }, grid: { color: '#333' } }
+            },
+            plugins: {
+                legend: { labels: { color: '#e0e0e0' } },
+            }
+        }
+    });
+</script>
+{% endif %}
+
+{% if stats.total > 0 %}
+<script>
+    new Chart(document.getElementById('winLossChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['승', '패'],
+            datasets: [{
+                data: [{{ stats.wins }}, {{ stats.losses }}],
+                backgroundColor: ['#51cf66', '#ff6b6b'],
+                borderColor: '#1a1a2e',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#e0e0e0' }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+
+<!-- 가중치 변화 차트 -->
+{% if learning is defined and learning.weight_history is defined and learning.weight_history | length > 0 %}
+<script>
+    const weightHistory = {{ learning.weight_history | tojson }};
+    const whDates = weightHistory.map(h => h.date);
+    const whMention = weightHistory.map(h => (h.w_mention_freq * 100).toFixed(1));
+    const whPositive = weightHistory.map(h => (h.w_positive_ratio * 100).toFixed(1));
+    const whConfidence = weightHistory.map(h => (h.w_confidence * 100).toFixed(1));
+    const whWinRate = weightHistory.map(h => h.win_rate !== undefined && h.win_rate !== null ? h.win_rate.toFixed(1) : null);
+
+    new Chart(document.getElementById('weightEvolutionChart'), {
+        type: 'line',
+        data: {
+            labels: whDates,
+            datasets: [
+                {
+                    label: '언급빈도 (%)',
+                    data: whMention,
+                    borderColor: '#4dabf7',
+                    backgroundColor: 'rgba(77, 171, 247, 0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#4dabf7',
+                    borderWidth: 2,
+                },
+                {
+                    label: '긍정비율 (%)',
+                    data: whPositive,
+                    borderColor: '#51cf66',
+                    backgroundColor: 'rgba(81, 207, 102, 0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#51cf66',
+                    borderWidth: 2,
+                },
+                {
+                    label: '신뢰도 (%)',
+                    data: whConfidence,
+                    borderColor: '#fcc419',
+                    backgroundColor: 'rgba(252, 196, 25, 0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#fcc419',
+                    borderWidth: 2,
+                },
+                {
+                    label: '승률 (%)',
+                    data: whWinRate,
+                    borderColor: '#ff6b6b',
+                    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#ff6b6b',
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    yAxisID: 'y1',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+                y: {
+                    position: 'left',
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        color: '#aaa',
+                        callback: v => v + '%'
+                    },
+                    grid: { color: '#333' },
+                    title: {
+                        display: true,
+                        text: '가중치 (%)',
+                        color: '#aaa'
+                    }
+                },
+                y1: {
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        color: '#ff6b6b',
+                        callback: v => v + '%'
+                    },
+                    grid: { drawOnChartArea: false },
+                    title: {
+                        display: true,
+                        text: '승률 (%)',
+                        color: '#ff6b6b'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: { color: '#e0e0e0' }
+                },
+                tooltip: {
+                    callbacks: {
+                        afterBody: function(context) {
+                            const idx = context[0].dataIndex;
+                            const reason = weightHistory[idx].adjustment_reason;
+                            return reason ? '\n사유: ' + reason : '';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+
+<!-- 학습 지표 추이 차트 -->
+{% if learning is defined and learning.metrics_history is defined and learning.metrics_history | length > 0 %}
+<script>
+    const metricsHistory = {{ learning.metrics_history | tojson }};
+    const mhDates = metricsHistory.map(m => m.date);
+    const mhAccuracy = metricsHistory.map(m => m.sentiment_accuracy !== undefined && m.sentiment_accuracy !== null ? m.sentiment_accuracy.toFixed(1) : null);
+    const mhPrecision = metricsHistory.map(m => m.positive_precision !== undefined && m.positive_precision !== null ? m.positive_precision.toFixed(1) : null);
+
+    new Chart(document.getElementById('metricsChart'), {
+        type: 'line',
+        data: {
+            labels: mhDates,
+            datasets: [
+                {
+                    label: '감성분석 정확도 (%)',
+                    data: mhAccuracy,
+                    borderColor: '#4dabf7',
+                    backgroundColor: 'rgba(77, 171, 247, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#4dabf7',
+                    borderWidth: 2,
+                },
+                {
+                    label: '긍정 정밀도 (%)',
+                    data: mhPrecision,
+                    borderColor: '#51cf66',
+                    backgroundColor: 'rgba(81, 207, 102, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#51cf66',
+                    borderWidth: 2,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        color: '#aaa',
+                        callback: v => v + '%'
+                    },
+                    grid: { color: '#333' }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: { color: '#e0e0e0' }
+                },
+                annotation: {
+                    annotations: {
+                        targetLine: {
+                            type: 'line',
+                            yMin: 60,
+                            yMax: 60,
+                            borderColor: 'rgba(252, 196, 25, 0.5)',
+                            borderWidth: 1,
+                            borderDash: [6, 3],
+                            label: {
+                                display: true,
+                                content: '목표 60%',
+                                position: 'end',
+                                color: '#fcc419',
+                                font: { size: 11 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

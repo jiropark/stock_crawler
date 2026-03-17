@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}매매 기록{% endblock %}
+
+{% block content %}
+<h1>매매 기록</h1>
+
+<div class="section">
+    {% if trades %}
+    <div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>일시</th>
+                <th>종목코드</th>
+                <th>종목명</th>
+                <th>유형</th>
+                <th>수량</th>
+                <th>가격</th>
+                <th>총액</th>
+                <th>스코어</th>
+                <th>손익</th>
+                <th>사유</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in trades %}
+            <tr>
+                <td>{{ t.traded_at }}</td>
+                <td>{{ t.stock_code }}</td>
+                <td>{{ t.stock_name }}</td>
+                <td>
+                    <span class="badge {% if t.trade_type == 'BUY' %}badge-buy{% else %}badge-sell{% endif %}">
+                        {{ t.trade_type }}
+                    </span>
+                </td>
+                <td>{{ t.quantity }}주</td>
+                <td>{{ "{:,.0f}".format(t.price) }}</td>
+                <td>{{ "{:,.0f}".format(t.total_amount) }}</td>
+                <td>{% if t.score %}{{ "%.2f"|format(t.score) }}{% else %}-{% endif %}</td>
+                <td class="{% if t.pnl and t.pnl >= 0 %}profit{% elif t.pnl %}loss{% endif %}" style="{% if t.pnl and t.pnl >= 0 %}color: #51cf66; font-weight: bold;{% elif t.pnl and t.pnl < 0 %}color: #ff6b6b; font-weight: bold;{% endif %}">
+                    {% if t.pnl %}{{ "{:+,.0f}".format(t.pnl) }}{% else %}-{% endif %}
+                </td>
+                <td class="reason-cell">
+                    {% if t.reason == 'score_high' %}
+                        <span class="badge badge-buy">스코어 매수</span>
+                    {% elif t.reason == 'stop_loss' %}
+                        <span class="badge badge-sell">손절 (-5%)</span>
+                    {% elif t.reason == 'trailing_stop' %}
+                        <span class="badge badge-sell">트레일링 스탑 (-3%)</span>
+                    {% elif t.reason == 'manual' %}
+                        <span class="badge" style="background: #6c757d;">수동</span>
+                    {% else %}
+                        {{ t.reason or '-' }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty-msg">매매 기록이 없습니다. 리밸런싱 후 표시됩니다.</p>
+    {% endif %}
+</div>
+{% endblock %}

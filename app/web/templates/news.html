@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}뉴스/스코어{% endblock %}
+
+{% block content %}
+<h1>뉴스 감성분석 & 종목 스코어</h1>
+
+<!-- 종목별 스코어 바 차트 -->
+<div class="section">
+    <h2>종목별 투자 스코어 (상위 10)</h2>
+    {% if scores %}
+    <div class="chart-container" style="max-width: 700px;">
+        <canvas id="scoreChart"></canvas>
+    </div>
+    {% else %}
+    <p class="empty-msg">스코어 데이터가 없습니다. 뉴스 수집 및 감성분석 후 표시됩니다.</p>
+    {% endif %}
+</div>
+
+<!-- 스코어 테이블 -->
+{% if scores %}
+<div class="section">
+    <h2>스코어 상세</h2>
+    <div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>종목코드</th>
+                <th>종목명</th>
+                <th>스코어</th>
+                <th>언급 수</th>
+                <th>긍정</th>
+                <th>부정</th>
+                <th>평균 신뢰도</th>
+                <th>감성 분포</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in scores %}
+            {% set neutral_count = s.mention_count - s.positive_count - s.negative_count %}
+            <tr>
+                <td>{{ s.stock_code }}</td>
+                <td>
+                    {{ s.stock_name }}
+                    {% if s.negative_count > s.positive_count %}
+                        <span class="badge badge-sell" style="font-size: 0.75em; margin-left: 6px;" title="부정 기사가 긍정보다 많습니다">주의</span>
+                    {% endif %}
+                </td>
+                <td class="{% if s.score >= 0.6 %}profit{% endif %}">{{ "%.4f"|format(s.score) }}</td>
+                <td>{{ s.mention_count }}</td>
+                <td class="profit">{{ s.positive_count }}</td>
+                <td class="loss">{{ s.negative_count }}</td>
+                <td>{{ "%.2f"|format(s.avg_confidence) }}</td>
+                <td style="font-size: 0.85em;">
+                    <span style="color: #51cf66;">긍정 {{ s.positive_count }}건</span> |
+                    <span style="color: #ff6b6b;">부정 {{ s.negative_count }}건</span> |
+                    <span style="color: #aaa;">중립 {{ neutral_count }}건</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 오늘의 뉴스 -->
+<div class="section">
+    <h2>오늘의 분석 뉴스</h2>
+    {% if today_news %}
+    <div class="news-grid">
+        {% for n in today_news %}
+        <div class="news-card">
+            <div class="news-header">
+                <span class="badge badge-{{ n.sentiment or 'neutral' }}">
+                    {% if n.sentiment == 'positive' %}긍정
+                    {% elif n.sentiment == 'negative' %}부정
+                    {% else %}중립{% endif %}
+                </span>
+                {% if n.confidence %}
+                <span class="confidence">신뢰도: {{ "%.0f"|format(n.confidence * 100) }}%</span>
+                {% endif %}
+            </div>
+            <h3 class="news-title">{{ n.title }}</h3>
+            {% if n.ai_summary %}
+            <p class="news-summary">{{ n.ai_summary }}</p>
+            {% endif %}
+            {% if n.mentioned_companies %}
+            <p class="news-companies">종목: {{ n.mentioned_companies }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-msg">오늘 분석된 뉴스가 없습니다.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if scores %}
+<script>
+    const scores = {{ scores | tojson }};
+    const ctx = document.getElementById('scoreChart').getContext('2d');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: scores.map(s => s.stock_name),
+            datasets: [{
+                label: '투자 스코어',
+                data: scores.map(s => s.score),
+                backgroundColor: scores.map(s =>
+                    s.score >= 0.6 ? '#51cf66' : '#4dabf7'
+                ),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            scales: {
+                x: {
+                    min: 0, max: 1,
+                    ticks: { color: '#aaa' },
+                    grid: { color: '#333' },
+                },
+                y: {
+                    ticks: { color: '#e0e0e0' },
+                    grid: { display: false },
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => '스코어: ' + ctx.parsed.x.toFixed(4)
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

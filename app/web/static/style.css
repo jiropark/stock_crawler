@@ -1,0 +1,359 @@
+/* ── AI 투자 대시보드 (다크 테마) ── */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', 'Noto Sans KR', sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* 네비게이션 */
+.navbar {
+    background-color: #16213e;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #0f3460;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-brand {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #4dabf7;
+}
+
+.nav-links {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.nav-links a {
+    color: #aaa;
+    text-decoration: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.nav-links a:hover {
+    color: #e0e0e0;
+    background-color: rgba(77, 171, 247, 0.15);
+}
+
+.nav-links a.active {
+    color: #4dabf7;
+    background-color: rgba(77, 171, 247, 0.2);
+}
+
+/* 컨테이너 */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+h1 {
+    color: #e0e0e0;
+    margin-bottom: 1.5rem;
+    font-size: 1.6rem;
+}
+
+h2 {
+    color: #ccc;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+}
+
+/* 카드 그리드 */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    background-color: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    text-align: center;
+}
+
+.card-label {
+    color: #888;
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+}
+
+.card-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #e0e0e0;
+}
+
+/* 수익/손실 색상 */
+.profit {
+    color: #51cf66 !important;
+}
+
+.loss {
+    color: #ff6b6b !important;
+}
+
+/* 섹션 */
+.section {
+    background-color: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* 테이블 */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+th, td {
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    border-bottom: 1px solid #0f3460;
+}
+
+th {
+    color: #888;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+tr:hover {
+    background-color: rgba(77, 171, 247, 0.05);
+}
+
+.reason-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 뱃지 */
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-positive {
+    background-color: rgba(81, 207, 102, 0.2);
+    color: #51cf66;
+}
+
+.badge-negative {
+    background-color: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+}
+
+.badge-neutral {
+    background-color: rgba(108, 117, 125, 0.2);
+    color: #aaa;
+}
+
+.badge-buy {
+    background-color: rgba(77, 171, 247, 0.2);
+    color: #4dabf7;
+}
+
+.badge-sell {
+    background-color: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+}
+
+/* 차트 컨테이너 */
+.chart-container {
+    padding: 1rem 0;
+}
+
+/* 뉴스 카드 */
+.news-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1rem;
+}
+
+.news-card {
+    background-color: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.news-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.confidence {
+    color: #888;
+    font-size: 0.8rem;
+}
+
+.news-title {
+    font-size: 0.95rem;
+    color: #e0e0e0;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.news-summary {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 0.4rem;
+}
+
+.news-companies {
+    font-size: 0.8rem;
+    color: #4dabf7;
+}
+
+/* 빈 데이터 메시지 */
+.empty-msg {
+    color: #666;
+    text-align: center;
+    padding: 2rem;
+    font-style: italic;
+}
+
+/* 푸터 */
+.footer {
+    text-align: center;
+    padding: 1.5rem;
+    color: #555;
+    font-size: 0.8rem;
+    border-top: 1px solid #0f3460;
+    margin-top: 2rem;
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+    .navbar {
+        flex-direction: column;
+        gap: 0.8rem;
+        padding: 0.8rem 1rem;
+    }
+
+    .nav-brand {
+        font-size: 1.1rem;
+    }
+
+    .nav-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .nav-links a {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.85rem;
+    }
+
+    .container {
+        padding: 0.8rem;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+    }
+
+    h2 {
+        font-size: 1.05rem;
+    }
+
+    .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.6rem;
+    }
+
+    .card {
+        padding: 0.8rem;
+    }
+
+    .card-value {
+        font-size: 1.1rem;
+    }
+
+    .card-label {
+        font-size: 0.75rem;
+    }
+
+    .news-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* 테이블 가로 스크롤 */
+    .section {
+        padding: 1rem;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+        font-size: 0.75rem;
+        min-width: 600px;
+    }
+
+    th, td {
+        padding: 0.4rem 0.5rem;
+        white-space: nowrap;
+    }
+
+    .reason-cell {
+        max-width: 120px;
+    }
+
+    /* 차트 컨테이너 */
+    .chart-container {
+        padding: 0.5rem 0;
+    }
+
+    .footer {
+        padding: 1rem;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card-value {
+        font-size: 1rem;
+    }
+
+    table {
+        font-size: 0.7rem;
+    }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
+    <title>{% block title %}Stock Crawler{% endblock %} - AI 투자 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">AI 투자 대시보드</div>
+        <div class="nav-links">
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}">대시보드</a>
+            <a href="/news" class="{% if request.path == '/news' %}active{% endif %}">뉴스/스코어</a>
+            <a href="/trades" class="{% if request.path == '/trades' %}active{% endif %}">매매 기록</a>
+            <a href="/performance" class="{% if request.path == '/performance' %}active{% endif %}">성과 분석</a>
+            <a href="/reflections" class="{% if request.path == '/reflections' %}active{% endif %}">반성</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>Stock Crawler AI - 뉴스 기반 자동 투자 시뮬레이터</p>
+        <p style="font-size: 0.85em; color: #888; margin-top: 4px;">
+            마지막 데이터 수집: {{ last_updated or '정보 없음' }}
+            &nbsp;|&nbsp;
+            다음 리밸런싱: 평일 16:30
+        </p>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

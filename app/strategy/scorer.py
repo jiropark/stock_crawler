@@ -13,6 +13,9 @@ import logging
 import json
 from collections import defaultdict
 
+# pykrx 내부 로깅 버그 방지 (logging.info(args, kwargs) 포맷 에러)
+logging.getLogger("pykrx").setLevel(logging.WARNING)
+
 from config import (
     WEIGHT_MENTION_FREQ, WEIGHT_POSITIVE_RATIO,
     WEIGHT_CONFIDENCE, SCORE_LOOKBACK_DAYS,

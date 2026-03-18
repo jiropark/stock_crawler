@@ -260,6 +260,8 @@ def _learn_from_claude(news_rows: list[dict], result_map: dict):
         for word in words:
             if word in ("에서", "으로", "이번", "올해", "지난", "관련", "통해", "대한", "하는", "있는", "한다"):
                 continue
+            if sentiment not in ("positive", "negative", "neutral"):
+                continue
             if word not in keyword_sentiment:
                 keyword_sentiment[word] = {"positive": 0, "negative": 0, "neutral": 0}
             keyword_sentiment[word][sentiment] += 1

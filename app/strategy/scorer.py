@@ -308,11 +308,11 @@ def get_company_scores(lookback_days: int = None) -> list[dict]:
             logger.debug("DART 차단: %s 악재=%s", company_name, dart_info["events"])
             continue
 
-        # 유동성 필터 (5일 평균 거래대금 3억 미만 제외)
+        # 유동성 필터 (5일 평균 거래대금 3억 미만 제외, 데이터 조회 실패 시 통과)
         if stock_code not in liquidity_cache:
             liquidity_cache[stock_code] = _get_liquidity(stock_code)
         liq = liquidity_cache[stock_code]
-        if liq is not None and liq["avg_trade_value"] < 300_000_000:
+        if liq is not None and liq["avg_trade_value"] > 0 and liq["avg_trade_value"] < 300_000_000:
             logger.debug("유동성 필터: %s (%s) 거래대금 %.1f억 < 3억",
                          company_name, stock_code, liq["avg_trade_value"] / 1e8)
             continue

@@ -23,9 +23,23 @@ from notifier import _send as tg_send
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 50
+BATCH_SIZE = 30  # 50→30: Claude 응답 ID 누락 방지
 RETRY_COUNT = 2
 BATCH_DELAY = 1  # Claude는 rate limit 여유로움
+
+# 주요 상장사 목록 (로컬 분류 시 회사명 추출용)
+MAJOR_COMPANIES = [
+    "삼성전자", "SK하이닉스", "LG에너지솔루션", "삼성바이오로직스",
+    "현대차", "기아", "셀트리온", "KB금융", "신한지주", "POSCO홀딩스",
+    "NAVER", "네이버", "카카오", "삼성SDI", "LG화학", "현대모비스",
+    "삼성물산", "삼성전기", "SK이노베이션", "SK텔레콤", "LG전자",
+    "한국전력", "포스코퓨처엠", "에코프로비엠", "에코프로", "두산에너빌리티",
+    "HD현대중공업", "한화에어로스페이스", "한미반도체", "크래프톤",
+    "카카오뱅크", "카카오페이", "하이브", "엔씨소프트", "넷마블",
+    "CJ제일제당", "아모레퍼시픽", "KT", "SKC", "한화솔루션",
+    "두산밥캣", "고려아연", "LG이노텍", "SK바이오팜", "삼성생명",
+    "한국가스공사", "대한항공", "HLB", "알테오젠", "리가켐바이오",
+]
 
 # ── 로컬 키워드 사전 (API 호출 절감) ──
 # 주의: 뉴스 검색 키워드(급등, 상한가, 신고가, 대량매수)와 겹치는 단어는 제외
@@ -66,13 +80,24 @@ SYSTEM_PROMPT = """당신은 한국 주식 시장 전문 뉴스 분석가입니�
 ANALYSIS_PROMPT = """주식 투자자 관점에서 아래 뉴스들의 감성을 분석해주세요.
 각 뉴스에 대해 sentiment(positive/negative/neutral), confidence(0.0~1.0), mentioned_companies(관련 상장사명), summary(투자 관점 한줄 요약)를 JSON 배열로 반환해주세요.
 
+중요:
+- 모든 뉴스에 대해 빠짐없이 결과를 반환하세요.
+- id는 반드시 [ID:숫자] 에서 추출한 정수(integer)를 그대로 사용하세요.
+
 반드시 아래 형식의 JSON 배열만 반환하세요:
 [
-  {{"id": 뉴스ID, "sentiment": "positive|negative|neutral", "confidence": 0.0~1.0, "mentioned_companies": ["회사명1"], "summary": "한줄 요약"}}
+  {{"id": 123, "sentiment": "positive|negative|neutral", "confidence": 0.8, "mentioned_companies": ["회사명1"], "summary": "한줄 요약"}}
 ]
 
 뉴스 목록:
 {news_list}"""
+
+
+def _extract_companies(title: str, description: str = "") -> str:
+    """제목/설명에서 주요 상장사명 추출"""
+    text = f"{title} {description}"
+    found = [c for c in MAJOR_COMPANIES if c in text]
+    return ",".join(dict.fromkeys(found))  # 중복 제거, 순서 유지
 
 
 def _classify_by_keywords(title: str, description: str = "") -> tuple[str, float] | None:
@@ -161,7 +186,7 @@ def _call_claude(news_rows: list[dict]) -> list[dict] | None:
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=4096,
+                max_tokens=8192,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
             )
@@ -314,11 +339,12 @@ def analyze_sentiment():
 
             if result:
                 sentiment, confidence = result
+                companies = _extract_companies(row["title"], row.get("description", ""))
                 update_news_sentiment(
                     news_id=row["id"],
                     sentiment=sentiment,
                     confidence=confidence,
-                    companies="",
+                    companies=companies,
                     summary="[로컬 분류]",
                 )
                 local_classified += 1
@@ -370,7 +396,37 @@ def analyze_sentiment():
         for r in results:
             rid = r.get("id")
             if rid is not None:
-                result_map[rid] = r
+                try:
+                    result_map[int(rid)] = r
+                except (ValueError, TypeError):
+                    result_map[rid] = r
+
+        # 폴백: ID 매칭 안 된 뉴스를 제목 유사도로 매칭
+        unmatched_news = [row for row in unique_news if row["id"] not in result_map]
+        if unmatched_news:
+            orphan_results = [r for r in results if r not in result_map.values()]
+            if orphan_results:
+                for row in unmatched_news:
+                    best_match = None
+                    best_score = 0
+                    row_tokens = set(re.findall(r'[가-힣a-zA-Z0-9]{2,}', row["title"] or ''))
+                    for r in orphan_results:
+                        summary = r.get("summary", "")
+                        r_tokens = set(re.findall(r'[가-힣a-zA-Z0-9]{2,}', summary))
+                        if not row_tokens or not r_tokens:
+                            continue
+                        score = len(row_tokens & r_tokens) / len(row_tokens | r_tokens)
+                        if score > best_score and score > 0.3:
+                            best_score = score
+                            best_match = r
+                    if best_match:
+                        result_map[row["id"]] = best_match
+                        orphan_results.remove(best_match)
+                        logger.debug("폴백 매칭: news_id=%d (score=%.2f)", row["id"], best_score)
+            if unmatched_news:
+                still_unmatched = len([r for r in unique_news if r["id"] not in result_map])
+                if still_unmatched:
+                    logger.warning("Claude 응답 ID 누락: %d건 매칭 실패", still_unmatched)
 
         for row in unique_news:
             r = result_map.get(row["id"])

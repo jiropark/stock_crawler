@@ -101,18 +101,18 @@ def update_news_sentiment(news_id: int, sentiment: str, confidence: float, compa
 
 
 def reset_error_news() -> int:
-    """sentiment='error'인 뉴스를 미분석 상태로 리셋. 리셋 건수 반환."""
+    """sentiment='error' 또는 'unknown'인 뉴스를 미분석 상태로 리셋. 리셋 건수 반환."""
     conn = get_connection()
     try:
         cursor = conn.execute(
             """UPDATE news
                SET sentiment = NULL, confidence = NULL, mentioned_companies = NULL,
                    ai_summary = NULL, analyzed_at = NULL
-               WHERE sentiment = 'error'"""
+               WHERE sentiment IN ('error', 'unknown')"""
         )
         conn.commit()
         count = cursor.rowcount
-        logger.info("error 뉴스 %d건 리셋 완료", count)
+        logger.info("error/unknown 뉴스 %d건 리셋 완료", count)
         return count
     finally:
         conn.close()

@@ -1,10 +1,11 @@
 """
 한국 주식 뉴스/공시 데이터 수집 + 투자 전략 엔진 + 웹 대시보드
 
-- 뉴스 수집: 평일 3회 (08:30, 12:00, 16:00)
+- 뉴스 수집: 평일 3회 (08:30, 12:00, 15:00)
 - 공시 수집: 1시간마다 (OpenDART API)
-- 감성 분석: 평일 1회 16:10 (Claude Haiku, 장 마감 직전 배치)
-- 리밸런싱: 평일 16:30 (장 마감 후)
+- 감성 분석: 평일 1회 15:10 (Claude Haiku, 장중 마지막 배치)
+- 매도 체크: 평일 15:20 (장 마감 10분 전, 손절/트레일링/성과기록)
+- 매수 주문: 평일 09:05 (시초가 매수, 전일 분석 기반)
 - 웹 대시보드: Flask (포트 8080)
 """
 
@@ -22,7 +23,7 @@ from collectors.naver_news import collect_news
 from collectors.dart import collect_dart
 from collectors.telegram_crawler import collect_telegram  # 웹 스크래핑 (인증 불필요)
 from analyzers.sentiment import analyze_sentiment
-from strategy.portfolio import rebalance, monitor_positions
+from strategy.portfolio import rebalance, sell_check, buy_orders, monitor_positions
 from strategy.learner import run_learning_cycle
 from strategy.reflection import run_reflection
 from strategy.scorer import reload_ticker_cache
@@ -87,14 +88,24 @@ def run_refresh_stock_codes():
         logger.exception("종목코드 캐시 갱신 중 예외 발생")
 
 
-def run_rebalance():
-    """리밸런싱 래퍼 (예외 방어)"""
+def run_sell_check():
+    """장 마감 전 매도 체크 래퍼 (예외 방어)"""
     try:
-        logger.info("── 포트폴리오 리밸런싱 시작 ──")
-        rebalance()
-        logger.info("── 포트폴리오 리밸런싱 완료 ──")
+        logger.info("── 장 마감 전 매도 체크 시작 ──")
+        sell_check()
+        logger.info("── 장 마감 전 매도 체크 완료 ──")
     except Exception:
-        logger.exception("리밸런싱 중 예외 발생")
+        logger.exception("매도 체크 중 예외 발생")
+
+
+def run_buy_orders():
+    """장 시작 매수 래퍼 (예외 방어)"""
+    try:
+        logger.info("── 장 시작 매수 주문 시작 ──")
+        buy_orders()
+        logger.info("── 장 시작 매수 주문 완료 ──")
+    except Exception:
+        logger.exception("매수 주문 중 예외 발생")
 
 
 def run_daily_reflection():
@@ -144,7 +155,7 @@ def main():
     # 스케줄러 설정
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
 
-    # 뉴스: 평일 3회 (08:30, 12:00, 16:00) - API 절감
+    # 뉴스: 평일 3회 (08:30, 12:00, 15:00)
     scheduler.add_job(
         run_news,
         CronTrigger(
@@ -173,12 +184,12 @@ def main():
         run_news,
         CronTrigger(
             day_of_week="mon-fri",
-            hour="16",
+            hour="15",
             minute="0",
             timezone="Asia/Seoul",
         ),
         id="news_collector_closing",
-        name="네이버 뉴스 수집 (장 마감)",
+        name="네이버 뉴스 수집 (장 마감 전)",
         misfire_grace_time=300,
     )
 
@@ -210,12 +221,12 @@ def main():
         misfire_grace_time=600,
     )
 
-    # 감성 분석: 평일 1회 16:10 (장 마감 직전, 하루치 모아서 배치)
+    # 감성 분석: 평일 15:10 (매도 체크 전에 완료)
     scheduler.add_job(
         run_sentiment,
         CronTrigger(
             day_of_week="mon-fri",
-            hour="16",
+            hour="15",
             minute="10",
             timezone="Asia/Seoul",
         ),
@@ -224,18 +235,32 @@ def main():
         misfire_grace_time=600,
     )
 
-    # 리밸런싱: 평일 16:30 (장 마감 후)
+    # 매도 체크: 평일 15:20 (장 마감 10분 전 — 손절/트레일링 + 성과기록)
     scheduler.add_job(
-        run_rebalance,
+        run_sell_check,
         CronTrigger(
             day_of_week="mon-fri",
-            hour="16",
-            minute="30",
+            hour="15",
+            minute="20",
             timezone="Asia/Seoul",
         ),
-        id="rebalancer",
-        name="포트폴리오 리밸런싱",
+        id="sell_check",
+        name="장 마감 전 매도 체크",
         misfire_grace_time=600,
+    )
+
+    # 매수 주문: 평일 09:05 (시초가 확인 후 조건부 매수)
+    scheduler.add_job(
+        run_buy_orders,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour="9",
+            minute="5",
+            timezone="Asia/Seoul",
+        ),
+        id="buy_orders",
+        name="장 시작 조건부 매수",
+        misfire_grace_time=300,
     )
 
     # 장중 포지션 모니터링: 평일 09:05~15:25, 10분 간격
@@ -302,7 +327,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    logger.info("스케줄러 시작 (평일 08:30~16:00 운영)")
+    logger.info("스케줄러 시작 (매수 09:05, 매도 15:20, 분석 15:10)")
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

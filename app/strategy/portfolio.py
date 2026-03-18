@@ -22,7 +22,7 @@ from db import (
     insert_daily_performance, get_daily_performances, get_win_loss_stats,
 )
 from strategy.scorer import get_company_scores
-from strategy.trader import get_current_price, execute_buy, execute_sell
+from strategy.trader import get_current_price, get_realtime_price, execute_buy, execute_sell
 
 logger = logging.getLogger(__name__)
 
@@ -123,119 +123,149 @@ def monitor_positions():
         logger.info("모니터링 매도 후 성과 기록: cash=%.0f", cash)
 
 
-def rebalance():
-    """메인 리밸런싱 함수 (평일 장 마감 후 실행)"""
-    logger.info("=== 리밸런싱 시작 ===")
+def sell_check():
+    """장 마감 전 매도 체크 (15:20 실행) — 손절/트레일링 + 성과기록 + 리포트"""
+    logger.info("=== 매도 체크 시작 (15:20) ===")
 
     holdings = get_holdings()
     cash = get_latest_cash()
-    sell_proceeds = 0.0  # 매도 수익금
 
-    # ── 1. 보유 종목 현재가 갱신 + 손절/트레일링 스탑 체크 ──
     for h in holdings:
         code = h["stock_code"]
-        price = get_current_price(code)
+        price = get_realtime_price(code) or get_current_price(code)
         if price is None:
             logger.warning("현재가 조회 실패, 스킵: %s", code)
             continue
 
         avg_price = h["avg_price"]
         highest = h.get("highest_price") or avg_price
-
-        # 수익률 계산
         pnl_pct = ((price - avg_price) / avg_price) * 100
 
-        # ── 2. 손절 체크 ──
+        # 손절 체크
         stop_loss = get_param("STOP_LOSS_PCT") or STOP_LOSS_PCT
         if pnl_pct <= stop_loss:
             reason = f"손절 ({pnl_pct:+.1f}%, 기준: {stop_loss}%)"
             result = execute_sell(code, reason, h)
-            sell_proceeds += result["total_amount"]
             cash += result["total_amount"]
             logger.info("손절 매도: %s %s (%+.1f%%)", code, h["stock_name"], pnl_pct)
             continue
 
-        # ── 3. 트레일링 스탑 체크 ──
+        # 트레일링 스탑 체크
         if price > highest:
-            highest = price  # 신고가 갱신
-
+            highest = price
         trailing_stop = get_param("TRAILING_STOP_PCT") or TRAILING_STOP_PCT
         trailing_pct = ((price - highest) / highest) * 100 if highest > 0 else 0
         if highest > avg_price and trailing_pct <= trailing_stop:
             reason = f"트레일링 스탑 (고점 대비 {trailing_pct:+.1f}%, 기준: {trailing_stop}%)"
             result = execute_sell(code, reason, h)
-            sell_proceeds += result["total_amount"]
             cash += result["total_amount"]
             logger.info("트레일링 스탑 매도: %s %s", code, h["stock_name"])
             continue
 
-        # ── 4. 현재가/최고가 갱신 ──
+        # 현재가/최고가 갱신
         update_holding_price(code, price, highest)
 
-    # ── 5. 시장 심리 체크 → 매수 여부 결정 ──
-    holdings_after = get_holdings()  # 매도 후 다시 조회
-    max_holdings = int(get_param("MAX_HOLDINGS") or MAX_HOLDINGS)
-    available_slots = max_holdings - len(holdings_after)
-
-    market_ok = _check_market_sentiment()
-
-    if available_slots > 0 and market_ok:
-        # 일일 매수 제한 체크
-        today_buys = _get_today_buy_count()
-        max_daily_buys = int(get_param("MAX_DAILY_BUYS") or 2)
-        remaining_buys = max(0, max_daily_buys - today_buys)
-
-        if remaining_buys == 0:
-            logger.info("일일 매수 제한 도달 (%d/%d)", today_buys, max_daily_buys)
-        else:
-            # 쿨다운 종목 조회
-            cooldown_codes = _get_cooldown_codes(7)
-            if cooldown_codes:
-                logger.info("쿨다운 종목 (%d개): %s", len(cooldown_codes), cooldown_codes)
-
-            # 최소 현금 보유 (30%)
-            min_cash_ratio = get_param("MIN_CASH_RATIO") or 0.3
-            min_cash = INITIAL_CAPITAL * min_cash_ratio
-            available_cash = max(0, cash - min_cash)
-
-            logger.info("매수 가능 슬롯: %d, 가용 현금: %.0f (최소 보유: %.0f)",
-                        available_slots, available_cash, min_cash)
-
-            scores = get_company_scores()
-
-            held_codes = {h["stock_code"] for h in holdings_after}
-            score_threshold = get_param("SCORE_THRESHOLD") or SCORE_THRESHOLD
-            buy_candidates = [
-                s for s in scores
-                if s["score"] >= score_threshold
-                   and s["stock_code"] not in held_codes
-                   and s["stock_code"] not in cooldown_codes
-            ]
-
-            for candidate in buy_candidates[:min(available_slots, remaining_buys)]:
-                if available_cash < 10000:
-                    break
-                result = execute_buy(
-                    candidate["stock_code"],
-                    candidate["stock_name"],
-                    candidate["score"],
-                    available_cash,  # min_cash를 뺀 가용 현금 전달
-                )
-                if result:
-                    cash -= result["total_amount"]
-                    available_cash -= result["total_amount"]
-    elif not market_ok:
-        logger.info("시장 심리 부정적 → 신규 매수 보류")
-    else:
-        logger.info("보유 종목 가득참 (%d/%d)", len(holdings_after), max_holdings)
-
-    # ── 6. 일별 성과 기록 ──
+    # 일별 성과 기록 + 텔레그램 리포트
+    cash = get_latest_cash()
     _record_daily_performance(cash)
-
-    # ── 7. 텔레그램 일일 리포트 ──
     _send_daily_report(cash)
+    logger.info("=== 매도 체크 완료 ===")
 
-    logger.info("=== 리밸런싱 완료 ===")
+
+def buy_orders():
+    """장 시작 직후 매수 (09:05 실행) — 전일 분석 기반, 조건부 진입"""
+    logger.info("=== 매수 주문 시작 (09:05) ===")
+
+    holdings = get_holdings()
+    cash = get_latest_cash()
+    max_holdings = int(get_param("MAX_HOLDINGS") or MAX_HOLDINGS)
+    available_slots = max_holdings - len(holdings)
+
+    if available_slots <= 0:
+        logger.info("보유 종목 가득참 (%d/%d)", len(holdings), max_holdings)
+        return
+
+    # 시장 심리 체크
+    if not _check_market_sentiment():
+        logger.info("시장 심리 부정적 → 신규 매수 보류")
+        return
+
+    # 일일 매수 제한
+    today_buys = _get_today_buy_count()
+    max_daily_buys = int(get_param("MAX_DAILY_BUYS") or 2)
+    remaining_buys = max(0, max_daily_buys - today_buys)
+    if remaining_buys == 0:
+        logger.info("일일 매수 제한 도달 (%d/%d)", today_buys, max_daily_buys)
+        return
+
+    # 쿨다운 종목
+    cooldown_codes = _get_cooldown_codes(7)
+    if cooldown_codes:
+        logger.info("쿨다운 종목 (%d개): %s", len(cooldown_codes), cooldown_codes)
+
+    # 최소 현금 보유
+    min_cash_ratio = get_param("MIN_CASH_RATIO") or 0.3
+    min_cash = INITIAL_CAPITAL * min_cash_ratio
+    available_cash = max(0, cash - min_cash)
+    logger.info("매수 가능 슬롯: %d, 가용 현금: %.0f", available_slots, available_cash)
+
+    # 전일 분석 스코어
+    scores = get_company_scores()
+    held_codes = {h["stock_code"] for h in holdings}
+    score_threshold = get_param("SCORE_THRESHOLD") or SCORE_THRESHOLD
+    buy_candidates = [
+        s for s in scores
+        if s["score"] >= score_threshold
+           and s["stock_code"] not in held_codes
+           and s["stock_code"] not in cooldown_codes
+    ]
+
+    if not buy_candidates:
+        logger.info("매수 후보 없음 (스코어 >= %.2f 충족 종목 없음)", score_threshold)
+        return
+
+    for candidate in buy_candidates[:min(available_slots, remaining_buys)]:
+        if available_cash < 10000:
+            break
+
+        code = candidate["stock_code"]
+        name = candidate["stock_name"]
+
+        # ── 조건부 진입: 시초가 확인 ──
+        realtime = get_realtime_price(code)
+        prev_close = get_current_price(code)  # 전일 종가
+
+        if realtime is None or prev_close is None:
+            logger.warning("가격 조회 실패, 매수 스킵: %s", code)
+            continue
+
+        gap_pct = ((realtime - prev_close) / prev_close) * 100
+
+        # 갭다운 -2% 이상 → 시그널 무효
+        if gap_pct <= -2.0:
+            logger.info("매수 스킵 (갭다운 %.1f%%): %s %s", gap_pct, code, name)
+            continue
+
+        # 갭업 +5% 이상 → 과열, 추격매수 금지
+        if gap_pct >= 5.0:
+            logger.info("매수 스킵 (갭업 과열 %.1f%%): %s %s", gap_pct, code, name)
+            continue
+
+        logger.info("매수 진입: %s %s (전일대비 %+.1f%%, 스코어 %.3f)",
+                    code, name, gap_pct, candidate["score"])
+
+        result = execute_buy(code, name, candidate["score"], available_cash)
+        if result:
+            cash -= result["total_amount"]
+            available_cash -= result["total_amount"]
+
+    logger.info("=== 매수 주문 완료 ===")
+
+
+def rebalance():
+    """레거시 호환용 — sell_check + buy_orders 순차 실행"""
+    sell_check()
+    buy_orders()
 
 
 def _check_market_sentiment() -> bool:
